@@ -12,6 +12,12 @@ import {
   getNotes
 } from "./db.js";
 
+/*
+==================================================
+ENVIRONMENT VARIABLES
+==================================================
+*/
+
 const GEMINI_API_KEY =
   process.env.GEMINI_API_KEY;
 
@@ -21,6 +27,13 @@ const GEMINI_MODEL =
 
 const MCP_SERVER_URL =
   process.env.MCP_SERVER_URL;
+
+
+/*
+==================================================
+VALIDATE ENVIRONMENT
+==================================================
+*/
 
 if (!GEMINI_API_KEY) {
   throw new Error(
@@ -34,10 +47,24 @@ if (!MCP_SERVER_URL) {
   );
 }
 
+
+/*
+==================================================
+GEMINI CLIENT
+==================================================
+*/
+
 const ai =
   new GoogleGenAI({
     apiKey: GEMINI_API_KEY
   });
+
+
+/*
+==================================================
+MCP CLIENT
+==================================================
+*/
 
 const mcpClient =
   new Client({
@@ -48,6 +75,7 @@ const mcpClient =
 let mcpTransport = null;
 
 let availableMcpTools = [];
+
 
 /*
 ==================================================
@@ -88,9 +116,10 @@ export async function connectMcp() {
   );
 }
 
+
 /*
 ==================================================
-MYSQL TOOLS
+MYSQL LOCAL TOOLS
 ==================================================
 */
 
@@ -104,6 +133,12 @@ async function executeLocalTool(
     name,
     args
   );
+
+  /*
+  -----------------------------------------------
+  SAVE NOTE
+  -----------------------------------------------
+  */
 
   if (
     name === "save_note"
@@ -127,10 +162,18 @@ async function executeLocalTool(
 
     return {
       success: true,
+
       message:
         `Saved successfully: ${note}`
     };
   }
+
+
+  /*
+  -----------------------------------------------
+  GET NOTES
+  -----------------------------------------------
+  */
 
   if (
     name === "get_notes"
@@ -146,14 +189,22 @@ async function executeLocalTool(
     };
   }
 
+
+  /*
+  -----------------------------------------------
+  UNKNOWN TOOL
+  -----------------------------------------------
+  */
+
   throw new Error(
     `Unknown local tool: ${name}`
   );
 }
 
+
 /*
 ==================================================
-MCP TOOL
+EXECUTE MCP TOOL
 ==================================================
 */
 
@@ -169,14 +220,16 @@ async function executeMcpTool(
 
   return await mcpClient.callTool({
     name,
+
     arguments:
       args || {}
   });
 }
 
+
 /*
 ==================================================
-CONVERT JSON SCHEMA
+CONVERT MCP JSON SCHEMA TO GEMINI SCHEMA
 ==================================================
 */
 
@@ -204,11 +257,14 @@ function convertJsonSchemaToGemini(
     )
   ) {
     convertedProperties[key] =
-      convertProperty(value);
+      convertProperty(
+        value
+      );
   }
 
   const result = {
     type: "object",
+
     properties:
       convertedProperties
   };
@@ -226,6 +282,13 @@ function convertJsonSchemaToGemini(
   return result;
 }
 
+
+/*
+==================================================
+CONVERT INDIVIDUAL PROPERTY
+==================================================
+*/
+
 function convertProperty(
   property
 ) {
@@ -235,64 +298,130 @@ function convertProperty(
     };
   }
 
+
+  /*
+  STRING
+  */
+
   if (
     property.type ===
     "string"
   ) {
-    return {
-      type: "string",
-      description:
-        property.description
+    const result = {
+      type: "string"
     };
+
+    if (
+      property.description
+    ) {
+      result.description =
+        property.description;
+    }
+
+    return result;
   }
+
+
+  /*
+  NUMBER
+  */
 
   if (
     property.type ===
     "number"
   ) {
-    return {
-      type: "number",
-      description:
-        property.description
+    const result = {
+      type: "number"
     };
+
+    if (
+      property.description
+    ) {
+      result.description =
+        property.description;
+    }
+
+    return result;
   }
+
+
+  /*
+  INTEGER
+  */
 
   if (
     property.type ===
     "integer"
   ) {
-    return {
-      type: "integer",
-      description:
-        property.description
+    const result = {
+      type: "integer"
     };
+
+    if (
+      property.description
+    ) {
+      result.description =
+        property.description;
+    }
+
+    return result;
   }
+
+
+  /*
+  BOOLEAN
+  */
 
   if (
     property.type ===
     "boolean"
   ) {
-    return {
-      type: "boolean",
-      description:
-        property.description
+    const result = {
+      type: "boolean"
     };
+
+    if (
+      property.description
+    ) {
+      result.description =
+        property.description;
+    }
+
+    return result;
   }
+
+
+  /*
+  ARRAY
+  */
 
   if (
     property.type ===
     "array"
   ) {
-    return {
+    const result = {
       type: "array",
+
       items:
         convertProperty(
           property.items
-        ),
-      description:
-        property.description
+        )
     };
+
+    if (
+      property.description
+    ) {
+      result.description =
+        property.description;
+    }
+
+    return result;
   }
+
+
+  /*
+  OBJECT
+  */
 
   if (
     property.type ===
@@ -319,71 +448,113 @@ function convertProperty(
         );
     }
 
-    return {
+    const result = {
       type: "object",
+
       properties:
-        converted,
-      required:
-        property.required ||
-        [],
-      description:
-        property.description
+        converted
     };
+
+    if (
+      Array.isArray(
+        property.required
+      ) &&
+      property.required.length > 0
+    ) {
+      result.required =
+        property.required;
+    }
+
+    if (
+      property.description
+    ) {
+      result.description =
+        property.description;
+    }
+
+    return result;
   }
 
+
+  /*
+  DEFAULT
+  */
+
   return {
-    type: "string",
-    description:
-      property.description
+    type: "string"
   };
 }
 
+
 /*
 ==================================================
-GEMINI TOOL DEFINITIONS
+BUILD GEMINI TOOLS
 ==================================================
 */
 
 function buildGeminiTools() {
   const tools = [];
 
+
   /*
-  MYSQL
+  ================================================
+  MYSQL: SAVE NOTE
+  ================================================
   */
 
   tools.push({
     type: "function",
+
     name: "save_note",
+
     description:
       "Save a note for the current user in MySQL. Use this when the user asks you to remember or save information.",
+
     parameters: {
       type: "object",
+
       properties: {
         note: {
           type: "string",
+
           description:
             "The information that should be saved."
         }
       },
+
       required: [
         "note"
       ]
     }
   });
 
+
+  /*
+  ================================================
+  MYSQL: GET NOTES
+  ================================================
+  */
+
   tools.push({
     type: "function",
+
     name: "get_notes",
+
     description:
       "Retrieve notes previously saved by the current user from MySQL.",
+
     parameters: {
       type: "object",
+
       properties: {}
     }
   });
 
+
   /*
-  CRICBUZZ MCP
+  ================================================
+  CRICBUZZ MCP TOOLS
+  ================================================
   */
 
   for (
@@ -392,10 +563,14 @@ function buildGeminiTools() {
   ) {
     tools.push({
       type: "function",
-      name: mcpTool.name,
+
+      name:
+        mcpTool.name,
+
       description:
         mcpTool.description ||
         `MCP tool: ${mcpTool.name}`,
+
       parameters:
         convertJsonSchemaToGemini(
           mcpTool.inputSchema
@@ -403,20 +578,25 @@ function buildGeminiTools() {
     });
   }
 
+
   return tools;
 }
 
+
 /*
 ==================================================
-CREATE CONVERSATION
+CREATE APPLICATION CONVERSATION
 ==================================================
 */
 
 export async function createConversation() {
   /*
-   * The application uses its own ID.
-   * Gemini Interactions are created
-   * when the first message is sent.
+   * This is our application's
+   * conversation ID.
+   *
+   * Gemini creates the actual
+   * interaction when the first
+   * message is sent.
    */
 
   const conversationId =
@@ -430,9 +610,10 @@ export async function createConversation() {
   return conversationId;
 }
 
+
 /*
 ==================================================
-RUN AGENT
+RUN CRICKET AI AGENT
 ==================================================
 */
 
@@ -446,15 +627,12 @@ export async function runCricketAgent({
     message
   );
 
+
   /*
-   * Store the Gemini interaction ID
-   * on the application object.
-   *
-   * Since the Node process normally
-   * handles the session, this map keeps
-   * the Gemini interaction associated
-   * with the application's session.
-   */
+  ================================================
+  GEMINI INTERACTION MEMORY
+  ================================================
+  */
 
   if (
     !globalThis.geminiInteractions
@@ -468,8 +646,22 @@ export async function runCricketAgent({
       conversationId
     );
 
+
+  /*
+  ================================================
+  BUILD TOOLS
+  ================================================
+  */
+
   const tools =
     buildGeminiTools();
+
+
+  /*
+  ================================================
+  SYSTEM INSTRUCTION
+  ================================================
+  */
 
   const systemInstruction = `
 You are a helpful cricket AI agent.
@@ -508,15 +700,23 @@ IMPORTANT RULES:
 - Answer naturally and clearly.
 `;
 
+
   /*
-   * FIRST INTERACTION
-   */
+  ================================================
+  CREATE FIRST GEMINI INTERACTION
+  ================================================
+  */
 
   let interaction;
+
 
   if (
     !previousInteractionId
   ) {
+    console.log(
+      "[AGENT] Creating new Gemini interaction"
+    );
+
     interaction =
       await ai.interactions.create({
         model:
@@ -539,9 +739,14 @@ IMPORTANT RULES:
       });
   } else {
     /*
-     * CONTINUE EXISTING GEMINI
-     * CONVERSATION
+     * CONTINUE EXISTING
+     * GEMINI INTERACTION
      */
+
+    console.log(
+      "[AGENT] Continuing Gemini interaction:",
+      previousInteractionId
+    );
 
     interaction =
       await ai.interactions.create({
@@ -568,19 +773,21 @@ IMPORTANT RULES:
       });
   }
 
+
   /*
-   * IMPORTANT:
-   *
-   * We do NOT manually copy Gemini
-   * functionCall parts into history.
-   *
-   * Gemini Interactions API keeps the
-   * reasoning/signature state.
-   */
+  ================================================
+  TOOL-CALL LOOP
+  ================================================
+  */
 
   while (true) {
     let functionCall =
       null;
+
+
+    /*
+     * Find Gemini function call.
+     */
 
     for (
       const step
@@ -590,21 +797,30 @@ IMPORTANT RULES:
         step.type ===
         "function_call"
       ) {
-        functionCall = step;
+        functionCall =
+          step;
 
         break;
       }
     }
 
+
     /*
-     * No tool call means we have
-     * the final answer.
+     ==============================================
+     NO TOOL CALL
+     ==============================================
      */
 
     if (!functionCall) {
       const answer =
         interaction.output_text ||
         "";
+
+
+      /*
+       * Save the Gemini interaction ID
+       * for the next user message.
+       */
 
       globalThis
         .geminiInteractions
@@ -613,6 +829,7 @@ IMPORTANT RULES:
           interaction.id
         );
 
+
       console.log(
         "[AGENT] Completed"
       );
@@ -620,15 +837,43 @@ IMPORTANT RULES:
       return answer;
     }
 
+
+    /*
+     ==============================================
+     GEMINI REQUESTED A TOOL
+     ==============================================
+     */
+
     console.log(
       "[AGENT] Tool requested:",
-      functionCall.name,
+      functionCall.name
+    );
+
+    console.log(
+      "[AGENT] Tool arguments:",
       functionCall.arguments
     );
 
+    console.log(
+      "[AGENT] Function call ID:",
+      functionCall.id
+    );
+
+
+    /*
+     ==============================================
+     EXECUTE TOOL
+     ==============================================
+     */
+
     let toolResult;
 
+
     try {
+      /*
+       * MYSQL TOOL
+       */
+
       if (
         functionCall.name ===
           "save_note" ||
@@ -638,14 +883,23 @@ IMPORTANT RULES:
         toolResult =
           await executeLocalTool(
             functionCall.name,
+
             functionCall.arguments ||
               {},
+
             userId
           );
-      } else {
+      }
+
+      /*
+       * MCP TOOL
+       */
+
+      else {
         toolResult =
           await executeMcpTool(
             functionCall.name,
+
             functionCall.arguments ||
               {}
           );
@@ -664,9 +918,41 @@ IMPORTANT RULES:
       };
     }
 
+
     /*
-     * Send the function result back
-     * through the Interactions API.
+     ==============================================
+     LOG TOOL RESULT
+     ==============================================
+     */
+
+    console.log(
+      "[AGENT] Tool result:",
+      toolResult
+    );
+
+
+    /*
+     ==============================================
+     SEND FUNCTION RESULT BACK TO GEMINI
+     ==============================================
+     
+     IMPORTANT:
+     
+     Gemini Interactions API expects:
+
+       type: "function_result"
+       name: functionCall.name
+       call_id: functionCall.id
+
+     The previous version incorrectly used:
+
+       functionCall.call_id
+
+     and did not provide:
+
+       name
+
+     ==============================================
      */
 
     interaction =
@@ -682,11 +968,42 @@ IMPORTANT RULES:
             type:
               "function_result",
 
-            call_id:
-              functionCall.call_id,
+            /*
+             * REQUIRED
+             */
 
-            result:
-              toolResult
+            name:
+              functionCall.name,
+
+            /*
+             * REQUIRED
+             *
+             * Gemini's function_call step
+             * uses "id".
+             */
+
+            call_id:
+              functionCall.id,
+
+            /*
+             * Return the tool result
+             * as text content.
+             */
+
+            result: [
+              {
+                type:
+                  "text",
+
+                text:
+                  typeof toolResult ===
+                  "string"
+                    ? toolResult
+                    : JSON.stringify(
+                        toolResult
+                      )
+              }
+            ]
           }
         ],
 
@@ -705,9 +1022,10 @@ IMPORTANT RULES:
   }
 }
 
+
 /*
 ==================================================
-CLOSE MCP
+CLOSE MCP CONNECTION
 ==================================================
 */
 
