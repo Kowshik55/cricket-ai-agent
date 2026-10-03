@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { GoogleGenAI } from "@google/genai";
 
 import {
