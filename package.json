@@ -1,16 +1,16 @@
 {
   "name": "cricket-ai-agent",
   "version": "1.0.0",
-  "description": "AI cricket agent using OpenAI, MCP, MySQL and Cricbuzz",
+  "description": "AI cricket agent using Gemini, MCP, MySQL and Cricbuzz",
   "type": "module",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "@openai/agents": "latest",
+    "@google/genai": "latest",
+    "@modelcontextprotocol/client": "latest",
     "cors": "latest",
     "express": "latest",
-    "mysql2": "latest",
-    "zod": "latest"
+    "mysql2": "latest"
   }
 }
