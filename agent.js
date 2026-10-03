@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+
 import { GoogleGenAI } from "@google/genai";
 
 import {
@@ -16,7 +17,7 @@ const GEMINI_API_KEY =
 
 const GEMINI_MODEL =
   process.env.GEMINI_MODEL ||
-  "gemini-2.5-flash";
+  "gemini-3.8-flash";
 
 const MCP_SERVER_URL =
   process.env.MCP_SERVER_URL;
@@ -48,13 +49,10 @@ let mcpTransport = null;
 
 let availableMcpTools = [];
 
-const conversations =
-  new Map();
-
 /*
---------------------------------------------------
-CONNECT TO CRICBUZZ MCP
---------------------------------------------------
+==================================================
+MCP CONNECTION
+==================================================
 */
 
 export async function connectMcp() {
@@ -91,9 +89,9 @@ export async function connectMcp() {
 }
 
 /*
---------------------------------------------------
-LOCAL MYSQL TOOLS
---------------------------------------------------
+==================================================
+MYSQL TOOLS
+==================================================
 */
 
 async function executeLocalTool(
@@ -107,7 +105,9 @@ async function executeLocalTool(
     args
   );
 
-  if (name === "save_note") {
+  if (
+    name === "save_note"
+  ) {
     const note =
       args?.note;
 
@@ -132,7 +132,9 @@ async function executeLocalTool(
     };
   }
 
-  if (name === "get_notes") {
+  if (
+    name === "get_notes"
+  ) {
     const notes =
       await getNotes(
         userId
@@ -150,9 +152,9 @@ async function executeLocalTool(
 }
 
 /*
---------------------------------------------------
-MCP TOOL EXECUTION
---------------------------------------------------
+==================================================
+MCP TOOL
+==================================================
 */
 
 async function executeMcpTool(
@@ -165,135 +167,17 @@ async function executeMcpTool(
     args
   );
 
-  const result =
-    await mcpClient.callTool({
-      name,
-      arguments:
-        args || {}
-    });
-
-  return result;
-}
-
-/*
---------------------------------------------------
-CONVERT MCP RESULT TO TEXT
---------------------------------------------------
-*/
-
-function mcpResultToText(
-  result
-) {
-  if (!result) {
-    return "";
-  }
-
-  if (
-    Array.isArray(
-      result.content
-    )
-  ) {
-    return result.content
-      .map(item => {
-        if (
-          item.type === "text"
-        ) {
-          return item.text;
-        }
-
-        return JSON.stringify(
-          item
-        );
-      })
-      .join("\n");
-  }
-
-  return JSON.stringify(
-    result
-  );
-}
-
-/*
---------------------------------------------------
-BUILD GEMINI TOOLS
---------------------------------------------------
-*/
-
-function buildGeminiTools() {
-  const tools = [];
-
-  /*
-  MySQL save_note
-  */
-
-  tools.push({
-    functionDeclarations: [
-      {
-        name: "save_note",
-        description:
-          "Save a note for the current user in MySQL. Use this when the user asks you to remember or save information.",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            note: {
-              type: "STRING",
-              description:
-                "The information that should be saved."
-            }
-          },
-          required: [
-            "note"
-          ]
-        }
-      },
-
-      /*
-      MySQL get_notes
-      */
-
-      {
-        name: "get_notes",
-        description:
-          "Retrieve notes previously saved by the current user from MySQL.",
-        parameters: {
-          type: "OBJECT",
-          properties: {}
-        }
-      }
-    ]
+  return await mcpClient.callTool({
+    name,
+    arguments:
+      args || {}
   });
-
-  /*
-  MCP tools
-  */
-
-  if (
-    availableMcpTools.length > 0
-  ) {
-    tools.push({
-      functionDeclarations:
-        availableMcpTools.map(
-          tool => ({
-            name: tool.name,
-            description:
-              tool.description ||
-              `MCP tool: ${tool.name}`,
-            parameters:
-              convertJsonSchemaToGemini(
-                tool.inputSchema
-              )
-          })
-        )
-    });
-  }
-
-  return tools;
 }
 
 /*
---------------------------------------------------
-JSON SCHEMA → GEMINI SCHEMA
---------------------------------------------------
+==================================================
+CONVERT JSON SCHEMA
+==================================================
 */
 
 function convertJsonSchemaToGemini(
@@ -301,20 +185,15 @@ function convertJsonSchemaToGemini(
 ) {
   if (!schema) {
     return {
-      type: "OBJECT",
+      type: "object",
       properties: {}
     };
   }
 
-  const result = {
-    type: "OBJECT",
-    properties: {},
-    required:
-      schema.required || []
-  };
-
   const properties =
     schema.properties || {};
+
+  const convertedProperties = {};
 
   for (
     const [
@@ -324,8 +203,24 @@ function convertJsonSchemaToGemini(
       properties
     )
   ) {
-    result.properties[key] =
+    convertedProperties[key] =
       convertProperty(value);
+  }
+
+  const result = {
+    type: "object",
+    properties:
+      convertedProperties
+  };
+
+  if (
+    Array.isArray(
+      schema.required
+    ) &&
+    schema.required.length > 0
+  ) {
+    result.required =
+      schema.required;
   }
 
   return result;
@@ -336,55 +231,60 @@ function convertProperty(
 ) {
   if (!property) {
     return {
-      type: "STRING"
+      type: "string"
     };
   }
 
   if (
-    property.type === "string"
+    property.type ===
+    "string"
   ) {
     return {
-      type: "STRING",
+      type: "string",
       description:
         property.description
     };
   }
 
   if (
-    property.type === "number"
+    property.type ===
+    "number"
   ) {
     return {
-      type: "NUMBER",
+      type: "number",
       description:
         property.description
     };
   }
 
   if (
-    property.type === "integer"
+    property.type ===
+    "integer"
   ) {
     return {
-      type: "INTEGER",
+      type: "integer",
       description:
         property.description
     };
   }
 
   if (
-    property.type === "boolean"
+    property.type ===
+    "boolean"
   ) {
     return {
-      type: "BOOLEAN",
+      type: "boolean",
       description:
         property.description
     };
   }
 
   if (
-    property.type === "array"
+    property.type ===
+    "array"
   ) {
     return {
-      type: "ARRAY",
+      type: "array",
       items:
         convertProperty(
           property.items
@@ -395,52 +295,135 @@ function convertProperty(
   }
 
   if (
-    property.type === "object"
+    property.type ===
+    "object"
   ) {
+    const properties =
+      property.properties ||
+      {};
+
+    const converted =
+      {};
+
+    for (
+      const [
+        key,
+        value
+      ] of Object.entries(
+        properties
+      )
+    ) {
+      converted[key] =
+        convertProperty(
+          value
+        );
+    }
+
     return {
-      type: "OBJECT",
+      type: "object",
       properties:
-        Object.fromEntries(
-          Object.entries(
-            property.properties || {}
-          ).map(
-            ([key, value]) => [
-              key,
-              convertProperty(value)
-            ]
-          )
-        ),
+        converted,
       required:
-        property.required || [],
+        property.required ||
+        [],
       description:
         property.description
     };
   }
 
   return {
-    type: "STRING",
+    type: "string",
     description:
       property.description
   };
 }
 
 /*
---------------------------------------------------
+==================================================
+GEMINI TOOL DEFINITIONS
+==================================================
+*/
+
+function buildGeminiTools() {
+  const tools = [];
+
+  /*
+  MYSQL
+  */
+
+  tools.push({
+    type: "function",
+    name: "save_note",
+    description:
+      "Save a note for the current user in MySQL. Use this when the user asks you to remember or save information.",
+    parameters: {
+      type: "object",
+      properties: {
+        note: {
+          type: "string",
+          description:
+            "The information that should be saved."
+        }
+      },
+      required: [
+        "note"
+      ]
+    }
+  });
+
+  tools.push({
+    type: "function",
+    name: "get_notes",
+    description:
+      "Retrieve notes previously saved by the current user from MySQL.",
+    parameters: {
+      type: "object",
+      properties: {}
+    }
+  });
+
+  /*
+  CRICBUZZ MCP
+  */
+
+  for (
+    const mcpTool
+    of availableMcpTools
+  ) {
+    tools.push({
+      type: "function",
+      name: mcpTool.name,
+      description:
+        mcpTool.description ||
+        `MCP tool: ${mcpTool.name}`,
+      parameters:
+        convertJsonSchemaToGemini(
+          mcpTool.inputSchema
+        )
+    });
+  }
+
+  return tools;
+}
+
+/*
+==================================================
 CREATE CONVERSATION
---------------------------------------------------
+==================================================
 */
 
 export async function createConversation() {
+  /*
+   * The application uses its own ID.
+   * Gemini Interactions are created
+   * when the first message is sent.
+   */
+
   const conversationId =
     crypto.randomUUID();
 
-  conversations.set(
-    conversationId,
-    []
-  );
-
   console.log(
-    "[GEMINI] Created conversation:",
+    "[GEMINI] Application conversation:",
     conversationId
   );
 
@@ -448,9 +431,9 @@ export async function createConversation() {
 }
 
 /*
---------------------------------------------------
+==================================================
 RUN AGENT
---------------------------------------------------
+==================================================
 */
 
 export async function runCricketAgent({
@@ -463,30 +446,27 @@ export async function runCricketAgent({
     message
   );
 
+  /*
+   * Store the Gemini interaction ID
+   * on the application object.
+   *
+   * Since the Node process normally
+   * handles the session, this map keeps
+   * the Gemini interaction associated
+   * with the application's session.
+   */
+
   if (
-    !conversations.has(
-      conversationId
-    )
+    !globalThis.geminiInteractions
   ) {
-    conversations.set(
-      conversationId,
-      []
-    );
+    globalThis.geminiInteractions =
+      new Map();
   }
 
-  const history =
-    conversations.get(
+  const previousInteractionId =
+    globalThis.geminiInteractions.get(
       conversationId
     );
-
-  history.push({
-    role: "user",
-    parts: [
-      {
-        text: message
-      }
-    ]
-  });
 
   const tools =
     buildGeminiTools();
@@ -501,202 +481,234 @@ You have access to:
 
 1. Cricbuzz MCP tools
 
-Use the Cricbuzz MCP tools when the user
-asks about current cricket information,
-live matches, live scores, commentary,
-or other information that requires
-current Cricbuzz data.
+Use Cricbuzz MCP tools when the user asks
+about current cricket information, live
+matches, live scores, commentary, or other
+information that requires current data.
 
 2. MySQL tools
 
-Use save_note when the user asks you
-to remember or save something.
+Use save_note when the user asks you to
+remember or save something.
 
-Use get_notes when the user asks what
-you previously saved or remembered.
+Use get_notes when the user asks what you
+previously saved or remembered.
 
 IMPORTANT RULES:
 
 - Never invent a live cricket score.
-- Use the Cricbuzz MCP tools for current
+- Always use Cricbuzz MCP for current
   cricket information.
-- Use MySQL tools for user notes.
-- Do not pretend that you called a tool
-  if you did not.
+- Use MySQL for saved user notes.
+- Do not pretend you used a tool when
+  you did not.
 - If a tool fails, clearly explain that
   the requested information could not
   be retrieved.
-- Answer naturally.
-- Do not expose internal implementation
-  details unless the user asks.
+- Answer naturally and clearly.
 `;
 
-  for (
-    let turn = 0;
-    turn < 10;
-    turn++
-  ) {
-    console.log(
-      `[AGENT] Gemini turn ${turn + 1}`
-    );
+  /*
+   * FIRST INTERACTION
+   */
 
-    const response =
-      await ai.models.generateContent({
+  let interaction;
+
+  if (
+    !previousInteractionId
+  ) {
+    interaction =
+      await ai.interactions.create({
         model:
           GEMINI_MODEL,
 
-        contents:
-          history,
+        input:
+          message,
 
-        config: {
+        tools,
+
+        system_instruction:
           systemInstruction,
 
-          tools,
+        generation_config: {
+          thinking_level:
+            "low"
+        },
 
-          temperature: 0.2
-        }
+        store: true
       });
+  } else {
+    /*
+     * CONTINUE EXISTING GEMINI
+     * CONVERSATION
+     */
 
-    const candidate =
-      response.candidates?.[0];
+    interaction =
+      await ai.interactions.create({
+        model:
+          GEMINI_MODEL,
 
-    const parts =
-      candidate?.content?.parts || [];
+        input:
+          message,
 
-    let hasFunctionCall =
-      false;
+        previous_interaction_id:
+          previousInteractionId,
 
-    let textOutput = "";
+        tools,
+
+        system_instruction:
+          systemInstruction,
+
+        generation_config: {
+          thinking_level:
+            "low"
+        },
+
+        store: true
+      });
+  }
+
+  /*
+   * IMPORTANT:
+   *
+   * We do NOT manually copy Gemini
+   * functionCall parts into history.
+   *
+   * Gemini Interactions API keeps the
+   * reasoning/signature state.
+   */
+
+  while (true) {
+    let functionCall =
+      null;
 
     for (
-      const part of parts
+      const step
+      of interaction.steps || []
     ) {
-      if (part.text) {
-        textOutput +=
-          part.text;
-      }
-
       if (
-        part.functionCall
+        step.type ===
+        "function_call"
       ) {
-        hasFunctionCall = true;
+        functionCall = step;
 
-        const functionCall =
-          part.functionCall;
-
-        const toolName =
-          functionCall.name;
-
-        const toolArgs =
-          functionCall.args || {};
-
-        console.log(
-          "[AGENT] Tool requested:",
-          toolName,
-          toolArgs
-        );
-
-        let toolResult;
-
-        try {
-          if (
-            toolName ===
-              "save_note" ||
-            toolName ===
-              "get_notes"
-          ) {
-            toolResult =
-              await executeLocalTool(
-                toolName,
-                toolArgs,
-                userId
-              );
-          } else {
-            toolResult =
-              await executeMcpTool(
-                toolName,
-                toolArgs
-              );
-
-            toolResult =
-              mcpResultToText(
-                toolResult
-              );
-          }
-        } catch (error) {
-          console.error(
-            "[TOOL ERROR]",
-            error
-          );
-
-          toolResult = {
-            error:
-              error instanceof Error
-                ? error.message
-                : String(error)
-          };
-        }
-
-        history.push({
-          role: "model",
-          parts: [
-            {
-              functionCall
-            }
-          ]
-        });
-
-        history.push({
-          role: "user",
-          parts: [
-            {
-              functionResponse: {
-                name:
-                  toolName,
-                response: {
-                  result:
-                    toolResult
-                }
-              }
-            }
-          ]
-        });
+        break;
       }
     }
 
-    if (
-      !hasFunctionCall
-    ) {
-      const finalAnswer =
-        textOutput.trim();
+    /*
+     * No tool call means we have
+     * the final answer.
+     */
 
-      history.push({
-        role: "model",
-        parts: [
-          {
-            text:
-              finalAnswer
-          }
-        ]
-      });
+    if (!functionCall) {
+      const answer =
+        interaction.output_text ||
+        "";
+
+      globalThis
+        .geminiInteractions
+        .set(
+          conversationId,
+          interaction.id
+        );
 
       console.log(
         "[AGENT] Completed"
       );
 
-      return finalAnswer;
+      return answer;
     }
-  }
 
-  throw new Error(
-    "Agent exceeded maximum tool turns."
-  );
+    console.log(
+      "[AGENT] Tool requested:",
+      functionCall.name,
+      functionCall.arguments
+    );
+
+    let toolResult;
+
+    try {
+      if (
+        functionCall.name ===
+          "save_note" ||
+        functionCall.name ===
+          "get_notes"
+      ) {
+        toolResult =
+          await executeLocalTool(
+            functionCall.name,
+            functionCall.arguments ||
+              {},
+            userId
+          );
+      } else {
+        toolResult =
+          await executeMcpTool(
+            functionCall.name,
+            functionCall.arguments ||
+              {}
+          );
+      }
+    } catch (error) {
+      console.error(
+        "[TOOL ERROR]",
+        error
+      );
+
+      toolResult = {
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error)
+      };
+    }
+
+    /*
+     * Send the function result back
+     * through the Interactions API.
+     */
+
+    interaction =
+      await ai.interactions.create({
+        model:
+          GEMINI_MODEL,
+
+        previous_interaction_id:
+          interaction.id,
+
+        input: [
+          {
+            type:
+              "function_result",
+
+            call_id:
+              functionCall.call_id,
+
+            result:
+              toolResult
+          }
+        ],
+
+        tools,
+
+        system_instruction:
+          systemInstruction,
+
+        generation_config: {
+          thinking_level:
+            "low"
+        },
+
+        store: true
+      });
+  }
 }
 
 /*
---------------------------------------------------
+==================================================
 CLOSE MCP
---------------------------------------------------
+==================================================
 */
 
 export async function closeMcp() {
