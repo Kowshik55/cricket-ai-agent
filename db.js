@@ -1,391 +1,191 @@
 import mysql from "mysql2/promise";
+import dns from "node:dns/promises";
+import net from "node:net";
 
+const host = process.env.MYSQL_TEST_HOST;
+const port = 3306;
 
-// =====================================================
-// RAILWAY MYSQL CONFIGURATION
-// =====================================================
-//
-// Railway provides these variables when the MySQL
-// service is connected to this application:
-//
-// MYSQLHOST
-// MYSQLPORT
-// MYSQLUSER
-// MYSQLPASSWORD
-// MYSQLDATABASE
-//
-// We intentionally use the individual variables here
-// instead of relying on MYSQL_URL.
-// =====================================================
+console.log("[TEST] MYSQL_TEST_HOST:", host);
+console.log("[TEST] MYSQL_TEST_PORT:", port);
 
+async function testDns() {
+  console.log("[TEST] Checking DNS...");
 
-const mysqlConfig = {
+  try {
+    const result = await dns.lookup(host, {
+      all: true
+    });
 
-  host:
-    process.env.MYSQLHOST,
+    console.log(
+      "[TEST] DNS result:",
+      JSON.stringify(result)
+    );
 
-  port:
-    Number(
-      process.env.MYSQLPORT || 3306
-    ),
+    return result;
+  } catch (error) {
+    console.error(
+      "[TEST] DNS FAILED:",
+      error
+    );
 
-  user:
-    process.env.MYSQLUSER,
+    throw error;
+  }
+}
 
-  password:
-    process.env.MYSQLPASSWORD,
-
-  database:
-    process.env.MYSQLDATABASE,
-
-  waitForConnections:
-    true,
-
-  connectionLimit:
-    10,
-
-  queueLimit:
-    0
-
-};
-
-
-// =====================================================
-// LOG CONFIGURATION
-// =====================================================
-
-console.log(
-  "[MYSQL] Host:",
-  mysqlConfig.host
-);
-
-console.log(
-  "[MYSQL] Port:",
-  mysqlConfig.port
-);
-
-console.log(
-  "[MYSQL] User:",
-  mysqlConfig.user
-);
-
-console.log(
-  "[MYSQL] Database:",
-  mysqlConfig.database
-);
-
-
-// =====================================================
-// CREATE CONNECTION POOL
-// =====================================================
-
-const pool =
-  mysql.createPool(
-    mysqlConfig
+async function testTcp() {
+  console.log(
+    "[TEST] Testing TCP connection..."
   );
 
+  return new Promise((resolve, reject) => {
 
-// =====================================================
-// TEST CONNECTION
-// =====================================================
+    const socket = net.createConnection({
+      host,
+      port,
+      timeout: 10000
+    });
 
-export async function testDatabaseConnection() {
+    socket.on("connect", () => {
+
+      console.log(
+        "[TEST] TCP CONNECTION SUCCESSFUL"
+      );
+
+      socket.destroy();
+
+      resolve();
+    });
+
+    socket.on("timeout", () => {
+
+      console.error(
+        "[TEST] TCP CONNECTION TIMEOUT"
+      );
+
+      socket.destroy();
+
+      reject(
+        new Error(
+          "TCP connection timed out"
+        )
+      );
+    });
+
+    socket.on("error", (error) => {
+
+      console.error(
+        "[TEST] TCP CONNECTION FAILED:",
+        error
+      );
+
+      reject(error);
+    });
+  });
+}
+
+async function testMysql() {
 
   console.log(
-    "[MYSQL] Testing connection..."
+    "[TEST] Testing MySQL..."
   );
 
-
   const connection =
-    await pool.getConnection();
+    await mysql.createConnection({
+
+      host,
+
+      port,
+
+      user:
+        process.env.MYSQLUSER,
+
+      password:
+        process.env.MYSQLPASSWORD,
+
+      database:
+        process.env.MYSQLDATABASE
+
+    });
+
+  try {
+
+    const [
+      rows
+    ] = await connection.query(
+      "SELECT 1 AS connected"
+    );
+
+    console.log(
+      "[TEST] MYSQL SUCCESS:",
+      rows
+    );
+
+  } finally {
+
+    await connection.end();
+
+  }
+}
+
+
+async function start() {
+
+  console.log(
+    "======================================"
+  );
+
+  console.log(
+    "RAILWAY MYSQL NETWORK DIAGNOSTIC"
+  );
+
+  console.log(
+    "======================================"
+  );
 
 
   try {
 
-    await connection.query(
-      "SELECT 1"
-    );
+    await testDns();
+
+    await testTcp();
+
+    await testMysql();
 
 
     console.log(
-      "[MYSQL] Connection successful"
+      "======================================"
     );
-
-
-  } finally {
-
-    connection.release();
-
-  }
-
-}
-
-
-// =====================================================
-// INITIALIZE DATABASE
-// =====================================================
-
-export async function initializeDatabase() {
-
-  console.log(
-    "[MYSQL] Creating application tables..."
-  );
-
-
-  const connection =
-    await pool.getConnection();
-
-
-  try {
-
-    // -------------------------------------------------
-    // CHAT SESSIONS
-    // -------------------------------------------------
-
-    await connection.query(`
-
-      CREATE TABLE IF NOT EXISTS chat_sessions (
-
-        id VARCHAR(100) PRIMARY KEY,
-
-        user_id VARCHAR(100) NOT NULL,
-
-        openai_conversation_id
-          VARCHAR(255) NOT NULL,
-
-        created_at
-          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-
-      )
-
-    `);
-
-
-    // -------------------------------------------------
-    // NOTES
-    // -------------------------------------------------
-
-    await connection.query(`
-
-      CREATE TABLE IF NOT EXISTS notes (
-
-        id BIGINT AUTO_INCREMENT PRIMARY KEY,
-
-        user_id VARCHAR(100) NOT NULL,
-
-        note TEXT NOT NULL,
-
-        created_at
-          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-
-      )
-
-    `);
-
 
     console.log(
-      "[MYSQL] Tables initialized"
+      "ALL MYSQL TESTS PASSED"
     );
 
+    console.log(
+      "======================================"
+    );
 
-  } finally {
+    process.exit(0);
 
-    connection.release();
+  } catch (error) {
 
+    console.error(
+      "======================================"
+    );
+
+    console.error(
+      "MYSQL DIAGNOSTIC FAILED"
+    );
+
+    console.error(
+      error
+    );
+
+    console.error(
+      "======================================"
+    );
+
+    process.exit(1);
   }
-
 }
 
-
-// =====================================================
-// CREATE CHAT SESSION
-// =====================================================
-
-export async function createChatSession(
-
-  sessionId,
-
-  userId,
-
-  conversationId
-
-) {
-
-  await pool.execute(
-
-    `
-
-      INSERT INTO chat_sessions
-
-      (
-
-        id,
-
-        user_id,
-
-        openai_conversation_id
-
-      )
-
-      VALUES (?, ?, ?)
-
-    `,
-
-    [
-
-      sessionId,
-
-      userId,
-
-      conversationId
-
-    ]
-
-  );
-
-}
-
-
-// =====================================================
-// GET CHAT SESSION
-// =====================================================
-
-export async function getChatSession(
-
-  sessionId
-
-) {
-
-  const [
-
-    rows
-
-  ] = await pool.execute(
-
-    `
-
-      SELECT
-
-        id,
-
-        user_id,
-
-        openai_conversation_id
-
-      FROM chat_sessions
-
-      WHERE id = ?
-
-      LIMIT 1
-
-    `,
-
-    [
-
-      sessionId
-
-    ]
-
-  );
-
-
-  return (
-
-    rows[0] || null
-
-  );
-
-}
-
-
-// =====================================================
-// SAVE NOTE
-// =====================================================
-
-export async function saveNote(
-
-  userId,
-
-  note
-
-) {
-
-  await pool.execute(
-
-    `
-
-      INSERT INTO notes
-
-      (
-
-        user_id,
-
-        note
-
-      )
-
-      VALUES (?, ?)
-
-    `,
-
-    [
-
-      userId,
-
-      note
-
-    ]
-
-  );
-
-}
-
-
-// =====================================================
-// GET NOTES
-// =====================================================
-
-export async function getNotes(
-
-  userId
-
-) {
-
-  const [
-
-    rows
-
-  ] = await pool.execute(
-
-    `
-
-      SELECT
-
-        id,
-
-        note,
-
-        created_at
-
-      FROM notes
-
-      WHERE user_id = ?
-
-      ORDER BY created_at DESC
-
-      LIMIT 50
-
-    `,
-
-    [
-
-      userId
-
-    ]
-
-  );
-
-
-  return rows;
-
-}
+start();
